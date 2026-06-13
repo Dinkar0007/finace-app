@@ -374,11 +374,14 @@ input[type="number"] { -moz-appearance: textfield; }
 .btn-vault:hover  { background: #059669; }
 .btn-vault:active { transform: scale(.97); }
 
+<<<<<<< HEAD
 .btn-withdraw {
     background: var(--blue);
 }
 .btn-withdraw:hover { background: #2563eb; }
 
+=======
+>>>>>>> 1f7f4cc7ae20632255fab87bb56a9efbb0a6832c
 /* 11. BUDGET GUIDE — horizontal bar style */
 .budget-bars {
     display: flex;
