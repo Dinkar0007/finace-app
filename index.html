@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0a0f1a" id="themeColor">
+    <title>Finance Manager Pro</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } }
+        }
+    </script>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════════
+         DESKTOP: Two-column layout
+         LEFT  = balances + budget + quick actions
+         RIGHT = history + custom expense/income
+         MOBILE: Single column, stacked
+    ════════════════════════════════════════════ -->
+
+    <div class="page-shell">
+
+        <!-- ── GLOBAL HEADER ── -->
+        <header class="page-header">
+            <div class="header-brand">
+                <h1>Finances <span class="status-dot"></span></h1>
+                <p class="header-month" id="monthDisplay">Loading…</p>
+            </div>
+            <div class="header-actions">
+                <button id="btn-theme" class="btn-icon-pill" title="Toggle theme" aria-label="Toggle theme">
+                    <span id="themeIcon">🌙</span>
+                </button>
+                <button id="btn-new-month" class="btn-primary">
+                    + New Month
+                </button>
+            </div>
+        </header>
+
+        <!-- ── MAIN TWO-COLUMN GRID ── -->
+        <main class="main-grid">
+
+            <!-- ════════════ LEFT COLUMN ════════════ -->
+            <div class="col-left">
+
+                <!-- RENT BANNER -->
+                <div class="rent-card" id="rentCard">
+                    <div class="rent-left">
+                        <div class="rent-icon">🏠</div>
+                        <div>
+                            <span class="label-xs">PG Rent</span>
+                            <p id="rentStatusText" class="rent-status pending">Pending</p>
+                        </div>
+                    </div>
+                    <button id="btn-rent" class="btn-rent">Mark Paid</button>
+                </div>
+
+                <!-- BALANCE CARDS -->
+                <div class="balance-grid">
+                    <div class="balance-card pocket-card">
+                        <div class="balance-label">
+                            <span class="dot dot-blue"></span>
+                            Pocket Money
+                        </div>
+                        <div class="balance-amount">
+                            <span class="currency-sym">₹</span>
+                            <span id="pocketDisplay" class="balance-value">0</span>
+                        </div>
+                    </div>
+                    <div class="balance-card savings-card">
+                        <div class="balance-label">
+                            <span class="dot dot-green"></span>
+                            Savings Vault
+                        </div>
+                        <div class="balance-amount">
+                            <span class="currency-sym">₹</span>
+                            <span id="savingsDisplay" class="balance-value">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VAULT TRANSFER -->
+                <div class="vault-row">
+                    <input
+                        type="number"
+                        id="saveAmount"
+                        placeholder="Amount to save…"
+                        min="1"
+                        class="vault-input"
+                    />
+                    <button id="btn-save" class="btn-vault">
+                        → Vault
+                    </button>
+                </div>
+
+                <!-- BUDGET GUIDE -->
+                <div class="card section-card">
+                    <div class="section-header">
+                        <span class="label-xs">Budget Guide</span>
+                        <span class="badge-pill">Base ₹<span id="splitBase">1000</span></span>
+                    </div>
+                    <div class="budget-bars">
+                        <div class="budget-bar-item">
+                            <div class="budget-bar-top">
+                                <span class="budget-bar-label">Save</span>
+                                <span class="budget-bar-pct">20%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-save" style="width:20%"></div>
+                            </div>
+                            <span class="budget-bar-amt">₹<span id="splitSave">200</span></span>
+                        </div>
+                        <div class="budget-bar-item">
+                            <div class="budget-bar-top">
+                                <span class="budget-bar-label">Needs</span>
+                                <span class="budget-bar-pct">50%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-needs" style="width:50%"></div>
+                            </div>
+                            <span class="budget-bar-amt">₹<span id="splitNeeds">500</span></span>
+                        </div>
+                        <div class="budget-bar-item">
+                            <div class="budget-bar-top">
+                                <span class="budget-bar-label">Fun</span>
+                                <span class="budget-bar-pct">30%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-fun" style="width:30%"></div>
+                            </div>
+                            <span class="budget-bar-amt">₹<span id="splitFun">300</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QUICK SPEND -->
+                <div class="card section-card">
+                    <span class="label-xs" style="margin-bottom:12px;display:block">Quick Spend</span>
+                    <div class="quick-spend-grid">
+                        <button data-amount="10" data-desc="Chai" class="btn-quick-spend">
+                            <span class="quick-icon">☕</span>
+                            <span class="quick-label">Chai</span>
+                            <span class="quick-amt">-₹10</span>
+                        </button>
+                        <button data-amount="20" data-desc="Snack" class="btn-quick-spend">
+                            <span class="quick-icon">🍿</span>
+                            <span class="quick-label">Snack</span>
+                            <span class="quick-amt">-₹20</span>
+                        </button>
+                        <button data-amount="50" data-desc="Transport" class="btn-quick-spend">
+                            <span class="quick-icon">🛺</span>
+                            <span class="quick-label">Auto</span>
+                            <span class="quick-amt">-₹50</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /col-left -->
+
+
+            <!-- ════════════ RIGHT COLUMN ════════════ -->
+            <div class="col-right">
+
+                <!-- CUSTOM EXPENSE -->
+                <div class="card section-card">
+                    <span class="label-xs" style="margin-bottom:12px;display:block">Custom Expense</span>
+                    <div class="input-row">
+                        <input
+                            type="number"
+                            id="customSpendAmount"
+                            placeholder="₹ Amount"
+                            min="1"
+                            class="input-field input-narrow"
+                        />
+                        <input
+                            type="text"
+                            id="customSpendDesc"
+                            placeholder="Description…"
+                            maxlength="60"
+                            class="input-field input-grow"
+                        />
+                        <button id="btn-custom-spend" class="btn-secondary">
+                            Spend
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ADD POCKET MONEY MANUALLY -->
+                <div class="card section-card">
+                    <span class="label-xs" style="margin-bottom:12px;display:block">Add Pocket Money</span>
+                    <div class="input-row" style="margin-bottom:10px">
+                        <input
+                            type="number"
+                            id="customPocketAmount"
+                            placeholder="₹ Amount"
+                            min="1"
+                            class="input-field input-grow"
+                        />
+                        <button id="btn-add-pocket" class="btn-income">
+                            Add
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ADD INCOME -->
+                <div class="card section-card">
+                    <span class="label-xs" style="margin-bottom:12px;display:block">Add Income / Bonus</span>
+                    <div class="bonus-quick-row">
+                        <button data-amount="100" class="btn-quick-bonus btn-bonus-pill">+₹100</button>
+                        <button data-amount="500" class="btn-quick-bonus btn-bonus-pill">+₹500</button>
+                        <button data-amount="1000" class="btn-quick-bonus btn-bonus-pill">+₹1000</button>
+                    </div>
+                    <div class="input-row" style="margin-top:10px">
+                        <input
+                            type="number"
+                            id="customBonusAmount"
+                            placeholder="₹ Custom amount"
+                            min="1"
+                            class="input-field input-grow"
+                        />
+                        <button id="btn-custom-bonus" class="btn-income">
+                            Add
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TRANSACTION HISTORY -->
+                <div class="card section-card history-card">
+                    <div class="section-header">
+                        <span class="label-xs">Transaction History</span>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button id="btn-clear-history" class="btn-ghost-danger">Clear</button>
+                            <button id="btn-export-csv" class="btn-export">Export CSV</button>
+                        </div>
+                    </div>
+                    <div id="historyLog" class="history-log"></div>
+                </div>
+
+                <!-- RESET -->
+                <div style="text-align:center;padding-bottom:8px">
+                    <button id="btn-reset" class="btn-reset-link">Reset App Data</button>
+                </div>
+
+            </div>
+            <!-- /col-right -->
+
+        </main>
+
+    </div><!-- /page-shell -->
+
+    <!-- ── NEW MONTH MODAL ── -->
+    <div id="newMonthModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Start New Month</h2>
+                <button id="btn-close-modal" class="btn-close-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc" id="modalMonthText">Loading…</p>
+                
+                <div class="modal-section">
+                    <label class="label-xs" style="margin-bottom:8px;display:block">Pocket Money Amount</label>
+                    <input
+                        type="number"
+                        id="modalPocketAmount"
+                        placeholder="₹ Enter amount"
+                        min="0"
+                        class="input-field modal-input"
+                    />
+                </div>
+
+                <div class="modal-section">
+                    <label class="label-xs" style="margin-bottom:8px;display:block">Month Start Date (Optional)</label>
+                    <input
+                        type="date"
+                        id="modalStartDate"
+                        class="input-field modal-input"
+                    />
+                    <p class="modal-hint">Leave blank to use today's date</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-cancel-modal" class="btn-secondary">Cancel</button>
+                <button id="btn-confirm-new-month" class="btn-primary">Start Month</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
