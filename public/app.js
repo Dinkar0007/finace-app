@@ -1,0 +1,464 @@
+// ═══════════════════════════════════════════════════════════════
+// FINANCE MANAGER PRO - App Logic
+// ═══════════════════════════════════════════════════════════════
+
+// Storage Keys
+const STORAGE_KEYS = {
+  current_month: 'finApp_currentMonth',
+  pocket: 'finApp_pocket',
+  savings: 'finApp_savings',
+  transactions: 'finApp_transactions',
+  rent_status: 'finApp_rentStatus'
+};
+
+// Theme Management
+function initTheme() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.classList.toggle('dark', saved === 'dark');
+  updateThemeIcon(saved === 'dark');
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  updateThemeIcon(isDark);
+}
+
+function updateThemeIcon(isDark) {
+  document.getElementById('themeIcon').textContent = isDark ? '☀️' : '🌙';
+}
+
+// Initialize App
+function initApp() {
+  initTheme();
+  loadData();
+  setupEventListeners();
+  updateDisplay();
+  setMonthDisplay();
+}
+
+// Load Data from LocalStorage
+function loadData() {
+  const data = {
+    currentMonth: localStorage.getItem(STORAGE_KEYS.current_month) || getMonthKey(),
+    pocket: parseFloat(localStorage.getItem(STORAGE_KEYS.pocket)) || 0,
+    savings: parseFloat(localStorage.getItem(STORAGE_KEYS.savings)) || 0,
+    transactions: JSON.parse(localStorage.getItem(STORAGE_KEYS.transactions)) || [],
+    rentStatus: localStorage.getItem(STORAGE_KEYS.rent_status) || 'pending'
+  };
+  window.appData = data;
+}
+
+// Save Data to LocalStorage
+function saveData() {
+  localStorage.setItem(STORAGE_KEYS.pocket, window.appData.pocket);
+  localStorage.setItem(STORAGE_KEYS.savings, window.appData.savings);
+  localStorage.setItem(STORAGE_KEYS.transactions, JSON.stringify(window.appData.transactions));
+  localStorage.setItem(STORAGE_KEYS.rent_status, window.appData.rentStatus);
+  localStorage.setItem(STORAGE_KEYS.current_month, window.appData.currentMonth);
+}
+
+// Get Current Month Key (YYYY-MM)
+function getMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Format Currency
+function formatCurrency(amount) {
+  return Math.max(0, amount).toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+}
+
+// Set Month Display
+function setMonthDisplay() {
+  const now = new Date();
+  const options = { month: 'long', year: 'numeric' };
+  document.getElementById('monthDisplay').textContent = now.toLocaleDateString('en-IN', options);
+}
+
+// Update UI Display
+function updateDisplay() {
+  document.getElementById('pocketDisplay').textContent = formatCurrency(window.appData.pocket);
+  document.getElementById('savingsDisplay').textContent = formatCurrency(window.appData.savings);
+  updateRentStatus();
+  updateTransactionHistory();
+}
+
+// Update Rent Status
+function updateRentStatus() {
+  const rentCard = document.getElementById('rentCard');
+  const rentStatusText = document.getElementById('rentStatusText');
+  const btnRent = document.getElementById('btn-rent');
+
+  if (window.appData.rentStatus === 'paid') {
+    rentStatusText.textContent = 'Paid ✓';
+    rentStatusText.className = 'rent-status paid';
+    btnRent.textContent = 'Mark Unpaid';
+  } else {
+    rentStatusText.textContent = 'Pending';
+    rentStatusText.className = 'rent-status pending';
+    btnRent.textContent = 'Mark Paid';
+  }
+}
+
+// Update Transaction History
+function updateTransactionHistory() {
+  const historyLog = document.getElementById('historyLog');
+  
+  if (window.appData.transactions.length === 0) {
+    historyLog.innerHTML = '<p style="color:#666;text-align:center;padding:12px">No transactions yet</p>';
+    return;
+  }
+
+  historyLog.innerHTML = window.appData.transactions
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .map(tx => {
+      const isExpense = tx.type === 'expense';
+      const icon = isExpense ? '↓' : '↑';
+      const color = isExpense ? '#ef4444' : '#22c55e';
+      const sign = isExpense ? '-' : '+';
+      
+      return `
+        <div class="history-item">
+          <div class="history-left">
+            <span class="history-icon" style="color:${color}">${icon}</span>
+            <div class="history-text">
+              <p class="history-desc">${tx.description}</p>
+              <p class="history-time">${formatDate(tx.date)}</p>
+            </div>
+          </div>
+          <span class="history-amt" style="color:${color}">${sign}₹${formatCurrency(tx.amount)}</span>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+// Format Date
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-IN', { 
+    month: 'short', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// Add Transaction
+function addTransaction(amount, description, type = 'expense') {
+  const transaction = {
+    amount: Math.abs(amount),
+    description,
+    type,
+    date: new Date().toISOString()
+  };
+  
+  window.appData.transactions.push(transaction);
+  
+  if (type === 'expense') {
+    window.appData.pocket -= amount;
+  } else {
+    window.appData.pocket += amount;
+  }
+  
+  window.appData.pocket = Math.max(0, window.appData.pocket);
+  saveData();
+  updateDisplay();
+}
+
+// Quick Spend
+function quickSpend(amount, description) {
+  if (window.appData.pocket >= amount) {
+    addTransaction(amount, description, 'expense');
+    showToast(`Spent ₹${formatCurrency(amount)} on ${description}`);
+  } else {
+    showToast('Insufficient pocket money! 💸', 'error');
+  }
+}
+
+// Custom Spend
+function customSpend() {
+  const amount = parseFloat(document.getElementById('customSpendAmount').value);
+  const desc = document.getElementById('customSpendDesc').value || 'Custom Expense';
+  
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+  
+  if (window.appData.pocket >= amount) {
+    addTransaction(amount, desc, 'expense');
+    document.getElementById('customSpendAmount').value = '';
+    document.getElementById('customSpendDesc').value = '';
+    showToast(`Spent ₹${formatCurrency(amount)} on ${desc}`);
+  } else {
+    showToast('Insufficient pocket money! 💸', 'error');
+  }
+}
+
+// Add Pocket Money
+function addPocketMoney() {
+  const amount = parseFloat(document.getElementById('customPocketAmount').value);
+  
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+  
+  addTransaction(amount, 'Added Pocket Money', 'income');
+  document.getElementById('customPocketAmount').value = '';
+  showToast(`Added ₹${formatCurrency(amount)} to pocket`);
+}
+
+// Add Bonus Income
+function addBonus(amount) {
+  addTransaction(amount, 'Bonus Income', 'income');
+  showToast(`Added ₹${formatCurrency(amount)} bonus! 🎉`);
+}
+
+// Add Custom Bonus
+function addCustomBonus() {
+  const amount = parseFloat(document.getElementById('customBonusAmount').value);
+  
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+  
+  addBonus(amount);
+  document.getElementById('customBonusAmount').value = '';
+}
+
+// Vault: Save to Savings
+function saveToVault() {
+  const amount = parseFloat(document.getElementById('saveAmount').value);
+  
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+  
+  if (window.appData.pocket >= amount) {
+    window.appData.pocket -= amount;
+    window.appData.savings += amount;
+    saveData();
+    updateDisplay();
+    document.getElementById('saveAmount').value = '';
+    showToast(`Saved ₹${formatCurrency(amount)} to Vault 🔐`);
+  } else {
+    showToast('Not enough pocket money!', 'error');
+  }
+}
+
+// Vault: Withdraw from Savings
+function withdrawFromVault() {
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+  
+  if (window.appData.savings >= amount) {
+    window.appData.savings -= amount;
+    window.appData.pocket += amount;
+    saveData();
+    updateDisplay();
+    document.getElementById('withdrawAmount').value = '';
+    showToast(`Withdrawn ₹${formatCurrency(amount)} from Vault 💰`);
+  } else {
+    showToast('Not enough in vault!', 'error');
+  }
+}
+
+// Toggle Rent Status
+function toggleRentStatus() {
+  window.appData.rentStatus = window.appData.rentStatus === 'paid' ? 'pending' : 'paid';
+  saveData();
+  updateDisplay();
+  
+  const status = window.appData.rentStatus === 'paid' ? 'Marked as Paid' : 'Marked as Pending';
+  showToast(`Rent ${status} ✓`);
+}
+
+// Clear History
+function clearHistory() {
+  if (confirm('Clear all transaction history? This cannot be undone.')) {
+    window.appData.transactions = [];
+    saveData();
+    updateDisplay();
+    showToast('Transaction history cleared');
+  }
+}
+
+// Export as CSV
+function exportCSV() {
+  if (window.appData.transactions.length === 0) {
+    showToast('No transactions to export', 'error');
+    return;
+  }
+  
+  let csv = 'Date,Description,Type,Amount\n';
+  
+  window.appData.transactions.forEach(tx => {
+    const date = new Date(tx.date).toLocaleDateString('en-IN');
+    csv += `"${date}","${tx.description}","${tx.type}",${tx.amount}\n`;
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `finance_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+  showToast('CSV exported! 📊');
+}
+
+// Reset All Data
+function resetAppData() {
+  if (confirm('Reset ALL app data? This cannot be undone.')) {
+    localStorage.clear();
+    window.appData = {
+      currentMonth: getMonthKey(),
+      pocket: 0,
+      savings: 0,
+      transactions: [],
+      rentStatus: 'pending'
+    };
+    saveData();
+    updateDisplay();
+    showToast('App data reset');
+  }
+}
+
+// Show Toast Notification
+function showToast(message, type = 'success') {
+  const existing = document.querySelector('.toast-notification');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = `toast-notification toast-${type}`;
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    background: ${type === 'error' ? '#ef4444' : '#22c55e'};
+    color: white;
+    font-size: 14px;
+    z-index: 9999;
+    animation: slideIn 0.3s ease-out;
+  `;
+  
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// Modal: New Month
+function openNewMonthModal() {
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const options = { month: 'long', year: 'numeric' };
+  document.getElementById('modalMonthText').textContent = 
+    `Start ${nextMonth.toLocaleDateString('en-IN', options)}?`;
+  document.getElementById('newMonthModal').style.display = 'flex';
+}
+
+function closeNewMonthModal() {
+  document.getElementById('newMonthModal').style.display = 'none';
+}
+
+function confirmNewMonth() {
+  const pocketAmount = parseFloat(document.getElementById('modalPocketAmount').value) || 0;
+  const startDate = document.getElementById('modalStartDate').value;
+  
+  // Reset for new month
+  window.appData.pocket = Math.max(0, pocketAmount);
+  window.appData.rentStatus = 'pending';
+  window.appData.currentMonth = getMonthKey();
+  window.appData.transactions = [];
+  
+  saveData();
+  updateDisplay();
+  closeNewMonthModal();
+  showToast('New month started! 🎉');
+  
+  // Clear inputs
+  document.getElementById('modalPocketAmount').value = '';
+  document.getElementById('modalStartDate').value = '';
+}
+
+// Setup Event Listeners
+function setupEventListeners() {
+  // Theme
+  document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+  
+  // New Month
+  document.getElementById('btn-new-month').addEventListener('click', openNewMonthModal);
+  document.getElementById('btn-close-modal').addEventListener('click', closeNewMonthModal);
+  document.getElementById('btn-cancel-modal').addEventListener('click', closeNewMonthModal);
+  document.getElementById('btn-confirm-new-month').addEventListener('click', confirmNewMonth);
+  
+  // Rent
+  document.getElementById('btn-rent').addEventListener('click', toggleRentStatus);
+  
+  // Vault
+  document.getElementById('btn-save').addEventListener('click', saveToVault);
+  document.getElementById('btn-withdraw').addEventListener('click', withdrawFromVault);
+  
+  // Quick Spend
+  document.querySelectorAll('.btn-quick-spend').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const amount = parseInt(btn.dataset.amount);
+      const desc = btn.dataset.desc;
+      quickSpend(amount, desc);
+    });
+  });
+  
+  // Custom Spend
+  document.getElementById('btn-custom-spend').addEventListener('click', customSpend);
+  document.getElementById('customSpendAmount').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') customSpend();
+  });
+  
+  // Pocket Money
+  document.getElementById('btn-add-pocket').addEventListener('click', addPocketMoney);
+  document.getElementById('customPocketAmount').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addPocketMoney();
+  });
+  
+  // Bonus Income
+  document.querySelectorAll('.btn-quick-bonus').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const amount = parseInt(btn.dataset.amount);
+      addBonus(amount);
+    });
+  });
+  
+  document.getElementById('btn-custom-bonus').addEventListener('click', addCustomBonus);
+  document.getElementById('customBonusAmount').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addCustomBonus();
+  });
+  
+  // History
+  document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
+  document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+  
+  // Reset
+  document.getElementById('btn-reset').addEventListener('click', resetAppData);
+  
+  // Close modal on overlay click
+  document.getElementById('newMonthModal').addEventListener('click', (e) => {
+    if (e.target.id === 'newMonthModal') closeNewMonthModal();
+  });
+}
+
+// Initialize on DOM Ready
+document.addEventListener('DOMContentLoaded', initApp);
