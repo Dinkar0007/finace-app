@@ -197,7 +197,6 @@ function addTransaction(amount, description, type = 'expense') {
     window.appData.pocket -= amount;
   } else {
     window.appData.pocket += amount;
-    // For incomes, grow the stable budget base so the guide only grows on added money
     window.appData.budgetBase = (window.appData.budgetBase || 0) + amount;
   }
   
@@ -245,7 +244,6 @@ function addPocketMoney() {
     return;
   }
 
-  // Ask user whether to include this added pocket money in the stable budget base
   const includeInBudget = confirm('Include this added pocket money in the budget guide (budget base)? Click OK to include, Cancel to treat as pocket-only.');
   const now = new Date().toISOString();
 
@@ -272,7 +270,6 @@ function addBonus(amount) {
     return;
   }
 
-  // Smart allocation: 50% to budget base, 30% to savings, 20% to immediate pocket
   const basePortion = Math.round(amount * 0.5);
   const savingsPortion = Math.round(amount * 0.3);
   const pocketPortion = amount - basePortion - savingsPortion;
@@ -458,40 +455,36 @@ function closeNewMonthModal() {
 function confirmNewMonth() {
   const pocketAmount = parseFloat(document.getElementById('modalPocketAmount').value) || 0;
   const startDate = document.getElementById('modalStartDate').value;
-  const previousPocket = window.appData.pocket || 0;
+  const currentPocket = window.appData.pocket || 0;
+  const previousPocket = currentPocket + (window.appData.leftoverPocket || 0);
   const now = new Date().toISOString();
 
   // Reset transactions for the new month (history starts fresh)
   window.appData.transactions = [];
 
   if (previousPocket > 0) {
-    const msg = `You have ₹${formatCurrency(previousPocket)} remaining from the previous month.\n` +
-      'OK = Combine previous remaining with the New Month amount and set the budget guide from the combined total.\n' +
-      'Cancel = Keep previous month pocket unchanged (saved separately) and use only the New Month Pocket Amount for the new pocket and budget guide.';
+    const msg = `You have ₹${formatCurrency(previousPocket)} from prior pocket money.\n` +
+      'OK = Combine prior pocket with the New Month amount and set the budget guide from the combined total.\n' +
+      'Cancel = Keep prior pocket unchanged (saved separately) and use only the New Month Pocket Amount for the new pocket and budget guide.';
 
     const combine = confirm(msg);
 
     if (combine) {
-      // Combine previous pocket with new month pocket amount
       const totalStart = previousPocket + Math.max(0, pocketAmount);
       window.appData.pocket = totalStart;
       window.appData.budgetBase = totalStart;
-      window.appData.leftoverPocket = 0; // cleared because combined
+      window.appData.leftoverPocket = 0;
       window.appData.transactions.push({ amount: totalStart, description: 'Starting pocket (carried + new)', type: 'income', date: now });
     } else {
-      // Keep previous pocket unchanged and save it separately; start pocket uses only new amount
       window.appData.leftoverPocket = previousPocket;
       window.appData.pocket = Math.max(0, pocketAmount);
       window.appData.budgetBase = Math.max(0, pocketAmount);
-      // Do not add a transaction for leftover so history stays focused on the new month
     }
   } else {
-    // No previous pocket: behave as before
     window.appData.pocket = Math.max(0, pocketAmount);
     window.appData.budgetBase = Math.max(0, pocketAmount);
   }
 
-  // Reset other month state
   window.appData.rentStatus = 'pending';
   window.appData.currentMonth = getMonthKey();
 
@@ -500,30 +493,20 @@ function confirmNewMonth() {
   closeNewMonthModal();
   showToast('New month started! 🎉');
 
-  // Clear inputs
   document.getElementById('modalPocketAmount').value = '';
   document.getElementById('modalStartDate').value = '';
 }
 
 // Setup Event Listeners
 function setupEventListeners() {
-  // Theme
   document.getElementById('btn-theme').addEventListener('click', toggleTheme);
-  
-  // New Month
   document.getElementById('btn-new-month').addEventListener('click', openNewMonthModal);
   document.getElementById('btn-close-modal').addEventListener('click', closeNewMonthModal);
   document.getElementById('btn-cancel-modal').addEventListener('click', closeNewMonthModal);
   document.getElementById('btn-confirm-new-month').addEventListener('click', confirmNewMonth);
-  
-  // Rent
   document.getElementById('btn-rent').addEventListener('click', toggleRentStatus);
-  
-  // Vault
   document.getElementById('btn-save').addEventListener('click', saveToVault);
   document.getElementById('btn-withdraw').addEventListener('click', withdrawFromVault);
-  
-  // Quick Spend
   document.querySelectorAll('.btn-quick-spend').forEach(btn => {
     btn.addEventListener('click', () => {
       const amount = parseInt(btn.dataset.amount);
@@ -531,44 +514,30 @@ function setupEventListeners() {
       quickSpend(amount, desc);
     });
   });
-  
-  // Custom Spend
   document.getElementById('btn-custom-spend').addEventListener('click', customSpend);
   document.getElementById('customSpendAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') customSpend();
   });
-  
-  // Pocket Money
   document.getElementById('btn-add-pocket').addEventListener('click', addPocketMoney);
   document.getElementById('customPocketAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addPocketMoney();
   });
-  
-  // Bonus Income
   document.querySelectorAll('.btn-quick-bonus').forEach(btn => {
     btn.addEventListener('click', () => {
       const amount = parseInt(btn.dataset.amount);
       addBonus(amount);
     });
   });
-  
   document.getElementById('btn-custom-bonus').addEventListener('click', addCustomBonus);
   document.getElementById('customBonusAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addCustomBonus();
   });
-  
-  // History
   document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
-  
-  // Reset
   document.getElementById('btn-reset').addEventListener('click', resetAppData);
-  
-  // Close modal on overlay click
   document.getElementById('newMonthModal').addEventListener('click', (e) => {
     if (e.target.id === 'newMonthModal') closeNewMonthModal();
   });
 }
 
-// Initialize on DOM Ready
 document.addEventListener('DOMContentLoaded', initApp);
