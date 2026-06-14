@@ -378,19 +378,44 @@ function closeNewMonthModal() {
 function confirmNewMonth() {
   const pocketAmount = parseFloat(document.getElementById('modalPocketAmount').value) || 0;
   const startDate = document.getElementById('modalStartDate').value;
-  
-  // Reset for new month
-  window.appData.pocket = Math.max(0, pocketAmount);
+  const currentPocket = window.appData.pocket || 0;
+  const previousPocket = currentPocket + (window.appData.leftoverPocket || 0);
+  const now = new Date().toISOString();
+
+  // Reset transactions for the new month (history starts fresh)
+  window.appData.transactions = [];
+
+  if (previousPocket > 0) {
+    const msg = `You have ₹${formatCurrency(previousPocket)} from prior pocket money.\n` +
+      'OK = Combine prior pocket with the New Month amount and set the budget guide from the combined total.\n' +
+      'Cancel = Keep prior pocket unchanged (saved separately) and use only the New Month Pocket Amount for the new pocket and budget guide.';
+
+    const combine = confirm(msg);
+
+    if (combine) {
+      const totalStart = previousPocket + Math.max(0, pocketAmount);
+      window.appData.pocket = totalStart;
+      window.appData.budgetBase = totalStart;
+      window.appData.leftoverPocket = 0;
+      window.appData.transactions.push({ amount: totalStart, description: 'Starting pocket (carried + new)', type: 'income', date: now });
+    } else {
+      window.appData.leftoverPocket = previousPocket;
+      window.appData.pocket = Math.max(0, pocketAmount);
+      window.appData.budgetBase = Math.max(0, pocketAmount);
+    }
+  } else {
+    window.appData.pocket = Math.max(0, pocketAmount);
+    window.appData.budgetBase = Math.max(0, pocketAmount);
+  }
+
   window.appData.rentStatus = 'pending';
   window.appData.currentMonth = getMonthKey();
-  window.appData.transactions = [];
-  
+
   saveData();
   updateDisplay();
   closeNewMonthModal();
   showToast('New month started! 🎉');
-  
-  // Clear inputs
+
   document.getElementById('modalPocketAmount').value = '';
   document.getElementById('modalStartDate').value = '';
 }
