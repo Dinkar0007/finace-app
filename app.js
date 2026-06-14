@@ -8,7 +8,9 @@ const STORAGE_KEYS = {
   pocket: 'finApp_pocket',
   savings: 'finApp_savings',
   transactions: 'finApp_transactions',
-  rent_status: 'finApp_rentStatus'
+  rent_status: 'finApp_rentStatus',
+  budget_base: 'finApp_budgetBase',
+  leftover_pocket: 'finApp_leftoverPocket'
 };
 
 // Theme Management
@@ -44,7 +46,9 @@ function loadData() {
     pocket: parseFloat(localStorage.getItem(STORAGE_KEYS.pocket)) || 0,
     savings: parseFloat(localStorage.getItem(STORAGE_KEYS.savings)) || 0,
     transactions: JSON.parse(localStorage.getItem(STORAGE_KEYS.transactions)) || [],
-    rentStatus: localStorage.getItem(STORAGE_KEYS.rent_status) || 'pending'
+    rentStatus: localStorage.getItem(STORAGE_KEYS.rent_status) || 'pending',
+    budgetBase: parseFloat(localStorage.getItem(STORAGE_KEYS.budget_base)) || 0,
+    leftoverPocket: parseFloat(localStorage.getItem(STORAGE_KEYS.leftover_pocket)) || 0
   };
   window.appData = data;
 }
@@ -56,6 +60,8 @@ function saveData() {
   localStorage.setItem(STORAGE_KEYS.transactions, JSON.stringify(window.appData.transactions));
   localStorage.setItem(STORAGE_KEYS.rent_status, window.appData.rentStatus);
   localStorage.setItem(STORAGE_KEYS.current_month, window.appData.currentMonth);
+  localStorage.setItem(STORAGE_KEYS.budget_base, window.appData.budgetBase || 0);
+  localStorage.setItem(STORAGE_KEYS.leftover_pocket, window.appData.leftoverPocket || 0);
 }
 
 // Get Current Month Key (YYYY-MM)
@@ -85,6 +91,34 @@ function updateDisplay() {
   document.getElementById('savingsDisplay').textContent = formatCurrency(window.appData.savings);
   updateRentStatus();
   updateTransactionHistory();
+  updateBudgetGuide();
+}
+
+// Update Budget Guide (stable base: only grows on income)
+function updateBudgetGuide() {
+  const base = Math.max(0, window.appData.budgetBase || 0);
+  const savePct = 0.2, needsPct = 0.5, funPct = 0.3;
+  const saveAmt = Math.round(base * savePct);
+  const needsAmt = Math.round(base * needsPct);
+  const funAmt = base - saveAmt - needsAmt;
+
+  const elBase = document.getElementById('splitBase');
+  const elSave = document.getElementById('splitSave');
+  const elNeeds = document.getElementById('splitNeeds');
+  const elFun = document.getElementById('splitFun');
+
+  if (elBase) elBase.textContent = base;
+  if (elSave) elSave.textContent = saveAmt;
+  if (elNeeds) elNeeds.textContent = needsAmt;
+  if (elFun) elFun.textContent = funAmt;
+
+  const barSave = document.querySelector('.bar-fill.bar-save');
+  const barNeeds = document.querySelector('.bar-fill.bar-needs');
+  const barFun = document.querySelector('.bar-fill.bar-fun');
+
+  if (barSave) barSave.style.width = `${savePct * 100}%`;
+  if (barNeeds) barNeeds.style.width = `${needsPct * 100}%`;
+  if (barFun) barFun.style.width = `${funPct * 100}%`;
 }
 
 // Update Rent Status
@@ -140,8 +174,8 @@ function updateTransactionHistory() {
 // Format Date
 function formatDate(dateString) {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-IN', { 
-    month: 'short', 
+  return date.toLocaleString('en-IN', {
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -163,6 +197,8 @@ function addTransaction(amount, description, type = 'expense') {
     window.appData.pocket -= amount;
   } else {
     window.appData.pocket += amount;
+    // For incomes, grow the stable budget base so the guide only grows on added money
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + amount;
   }
   
   window.appData.pocket = Math.max(0, window.appData.pocket);
@@ -208,16 +244,58 @@ function addPocketMoney() {
     showToast('Enter valid amount', 'error');
     return;
   }
-  
-  addTransaction(amount, 'Added Pocket Money', 'income');
+
+  // Ask user whether to include this added pocket money in the stable budget base
+  const includeInBudget = confirm('Include this added pocket money in the budget guide (budget base)? Click OK to include, Cancel to treat as pocket-only.');
+  const now = new Date().toISOString();
+
+  if (includeInBudget) {
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + amount;
+    window.appData.pocket += amount;
+    window.appData.transactions.push({ amount, description: 'Added Pocket Money (Included in Budget)', type: 'income', date: now });
+    showToast(`Added ₹${formatCurrency(amount)} to pocket and budget`);
+  } else {
+    window.appData.pocket += amount;
+    window.appData.transactions.push({ amount, description: 'Added Pocket Money', type: 'income', date: now });
+    showToast(`Added ₹${formatCurrency(amount)} to pocket`);
+  }
+
   document.getElementById('customPocketAmount').value = '';
-  showToast(`Added ₹${formatCurrency(amount)} to pocket`);
+  saveData();
+  updateDisplay();
 }
 
-// Add Bonus Income
+// Add Bonus Income (smart allocation)
 function addBonus(amount) {
-  addTransaction(amount, 'Bonus Income', 'income');
-  showToast(`Added ₹${formatCurrency(amount)} bonus! 🎉`);
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+
+  // Smart allocation: 50% to budget base, 30% to savings, 20% to immediate pocket
+  const basePortion = Math.round(amount * 0.5);
+  const savingsPortion = Math.round(amount * 0.3);
+  const pocketPortion = amount - basePortion - savingsPortion;
+  const now = new Date().toISOString();
+
+  if (basePortion > 0) {
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + basePortion;
+    window.appData.transactions.push({ amount: basePortion, description: 'Bonus → Budget Base', type: 'income', date: now });
+  }
+
+  if (savingsPortion > 0) {
+    window.appData.savings += savingsPortion;
+    window.appData.transactions.push({ amount: savingsPortion, description: 'Bonus → Savings', type: 'income', date: now });
+  }
+
+  if (pocketPortion > 0) {
+    window.appData.pocket += pocketPortion;
+    window.appData.transactions.push({ amount: pocketPortion, description: 'Bonus → Pocket', type: 'income', date: now });
+  }
+
+  saveData();
+  updateDisplay();
+  showToast(`Bonus allocated: ₹${formatCurrency(basePortion)} to budget, ₹${formatCurrency(savingsPortion)} to savings, ₹${formatCurrency(pocketPortion)} to pocket`);
 }
 
 // Add Custom Bonus
@@ -328,7 +406,9 @@ function resetAppData() {
       pocket: 0,
       savings: 0,
       transactions: [],
-      rentStatus: 'pending'
+      rentStatus: 'pending',
+      budgetBase: 0,
+      leftoverPocket: 0
     };
     saveData();
     updateDisplay();
@@ -378,18 +458,48 @@ function closeNewMonthModal() {
 function confirmNewMonth() {
   const pocketAmount = parseFloat(document.getElementById('modalPocketAmount').value) || 0;
   const startDate = document.getElementById('modalStartDate').value;
-  
-  // Reset for new month
-  window.appData.pocket = Math.max(0, pocketAmount);
+  const previousPocket = window.appData.pocket || 0;
+  const now = new Date().toISOString();
+
+  // Reset transactions for the new month (history starts fresh)
+  window.appData.transactions = [];
+
+  if (previousPocket > 0) {
+    const msg = `You have ₹${formatCurrency(previousPocket)} remaining from the previous month.\n` +
+      'OK = Combine previous remaining with the New Month amount and set the budget guide from the combined total.\n' +
+      'Cancel = Keep previous month pocket unchanged (saved separately) and use only the New Month Pocket Amount for the new pocket and budget guide.';
+
+    const combine = confirm(msg);
+
+    if (combine) {
+      // Combine previous pocket with new month pocket amount
+      const totalStart = previousPocket + Math.max(0, pocketAmount);
+      window.appData.pocket = totalStart;
+      window.appData.budgetBase = totalStart;
+      window.appData.leftoverPocket = 0; // cleared because combined
+      window.appData.transactions.push({ amount: totalStart, description: 'Starting pocket (carried + new)', type: 'income', date: now });
+    } else {
+      // Keep previous pocket unchanged and save it separately; start pocket uses only new amount
+      window.appData.leftoverPocket = previousPocket;
+      window.appData.pocket = Math.max(0, pocketAmount);
+      window.appData.budgetBase = Math.max(0, pocketAmount);
+      // Do not add a transaction for leftover so history stays focused on the new month
+    }
+  } else {
+    // No previous pocket: behave as before
+    window.appData.pocket = Math.max(0, pocketAmount);
+    window.appData.budgetBase = Math.max(0, pocketAmount);
+  }
+
+  // Reset other month state
   window.appData.rentStatus = 'pending';
   window.appData.currentMonth = getMonthKey();
-  window.appData.transactions = [];
-  
+
   saveData();
   updateDisplay();
   closeNewMonthModal();
   showToast('New month started! 🎉');
-  
+
   // Clear inputs
   document.getElementById('modalPocketAmount').value = '';
   document.getElementById('modalStartDate').value = '';
