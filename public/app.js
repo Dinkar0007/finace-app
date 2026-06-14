@@ -8,7 +8,9 @@ const STORAGE_KEYS = {
   pocket: 'finApp_pocket',
   savings: 'finApp_savings',
   transactions: 'finApp_transactions',
-  rent_status: 'finApp_rentStatus'
+  rent_status: 'finApp_rentStatus',
+  budget_base: 'finApp_budgetBase',
+  leftover_pocket: 'finApp_leftoverPocket'
 };
 
 // Theme Management
@@ -44,7 +46,9 @@ function loadData() {
     pocket: parseFloat(localStorage.getItem(STORAGE_KEYS.pocket)) || 0,
     savings: parseFloat(localStorage.getItem(STORAGE_KEYS.savings)) || 0,
     transactions: JSON.parse(localStorage.getItem(STORAGE_KEYS.transactions)) || [],
-    rentStatus: localStorage.getItem(STORAGE_KEYS.rent_status) || 'pending'
+    rentStatus: localStorage.getItem(STORAGE_KEYS.rent_status) || 'pending',
+    budgetBase: parseFloat(localStorage.getItem(STORAGE_KEYS.budget_base)) || 0,
+    leftoverPocket: parseFloat(localStorage.getItem(STORAGE_KEYS.leftover_pocket)) || 0
   };
   window.appData = data;
 }
@@ -56,6 +60,8 @@ function saveData() {
   localStorage.setItem(STORAGE_KEYS.transactions, JSON.stringify(window.appData.transactions));
   localStorage.setItem(STORAGE_KEYS.rent_status, window.appData.rentStatus);
   localStorage.setItem(STORAGE_KEYS.current_month, window.appData.currentMonth);
+  localStorage.setItem(STORAGE_KEYS.budget_base, window.appData.budgetBase || 0);
+  localStorage.setItem(STORAGE_KEYS.leftover_pocket, window.appData.leftoverPocket || 0);
 }
 
 // Get Current Month Key (YYYY-MM)
@@ -85,6 +91,34 @@ function updateDisplay() {
   document.getElementById('savingsDisplay').textContent = formatCurrency(window.appData.savings);
   updateRentStatus();
   updateTransactionHistory();
+  updateBudgetGuide();
+}
+
+// Update Budget Guide (stable base: only grows on income)
+function updateBudgetGuide() {
+  const base = Math.max(0, window.appData.budgetBase || 0);
+  const savePct = 0.2, needsPct = 0.5, funPct = 0.3;
+  const saveAmt = Math.round(base * savePct);
+  const needsAmt = Math.round(base * needsPct);
+  const funAmt = base - saveAmt - needsAmt;
+
+  const elBase = document.getElementById('splitBase');
+  const elSave = document.getElementById('splitSave');
+  const elNeeds = document.getElementById('splitNeeds');
+  const elFun = document.getElementById('splitFun');
+
+  if (elBase) elBase.textContent = base;
+  if (elSave) elSave.textContent = saveAmt;
+  if (elNeeds) elNeeds.textContent = needsAmt;
+  if (elFun) elFun.textContent = funAmt;
+
+  const barSave = document.querySelector('.bar-fill.bar-save');
+  const barNeeds = document.querySelector('.bar-fill.bar-needs');
+  const barFun = document.querySelector('.bar-fill.bar-fun');
+
+  if (barSave) barSave.style.width = `${savePct * 100}%`;
+  if (barNeeds) barNeeds.style.width = `${needsPct * 100}%`;
+  if (barFun) barFun.style.width = `${funPct * 100}%`;
 }
 
 // Update Rent Status
@@ -163,6 +197,7 @@ function addTransaction(amount, description, type = 'expense') {
     window.appData.pocket -= amount;
   } else {
     window.appData.pocket += amount;
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + amount;
   }
   
   window.appData.pocket = Math.max(0, window.appData.pocket);
@@ -208,16 +243,56 @@ function addPocketMoney() {
     showToast('Enter valid amount', 'error');
     return;
   }
-  
-  addTransaction(amount, 'Added Pocket Money', 'income');
+
+  const includeInBudget = confirm('Include this added pocket money in the budget guide (budget base)? Click OK to include, Cancel to treat as pocket-only.');
+  const now = new Date().toISOString();
+
+  if (includeInBudget) {
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + amount;
+    window.appData.pocket += amount;
+    window.appData.transactions.push({ amount, description: 'Added Pocket Money (Included in Budget)', type: 'income', date: now });
+    showToast(`Added ₹${formatCurrency(amount)} to pocket and budget`);
+  } else {
+    window.appData.pocket += amount;
+    window.appData.transactions.push({ amount, description: 'Added Pocket Money', type: 'income', date: now });
+    showToast(`Added ₹${formatCurrency(amount)} to pocket`);
+  }
+
   document.getElementById('customPocketAmount').value = '';
-  showToast(`Added ₹${formatCurrency(amount)} to pocket`);
+  saveData();
+  updateDisplay();
 }
 
-// Add Bonus Income
+// Add Bonus Income (smart allocation)
 function addBonus(amount) {
-  addTransaction(amount, 'Bonus Income', 'income');
-  showToast(`Added ₹${formatCurrency(amount)} bonus! 🎉`);
+  if (!amount || amount <= 0) {
+    showToast('Enter valid amount', 'error');
+    return;
+  }
+
+  const basePortion = Math.round(amount * 0.5);
+  const savingsPortion = Math.round(amount * 0.3);
+  const pocketPortion = amount - basePortion - savingsPortion;
+  const now = new Date().toISOString();
+
+  if (basePortion > 0) {
+    window.appData.budgetBase = (window.appData.budgetBase || 0) + basePortion;
+    window.appData.transactions.push({ amount: basePortion, description: 'Bonus → Budget Base', type: 'income', date: now });
+  }
+
+  if (savingsPortion > 0) {
+    window.appData.savings += savingsPortion;
+    window.appData.transactions.push({ amount: savingsPortion, description: 'Bonus → Savings', type: 'income', date: now });
+  }
+
+  if (pocketPortion > 0) {
+    window.appData.pocket += pocketPortion;
+    window.appData.transactions.push({ amount: pocketPortion, description: 'Bonus → Pocket', type: 'income', date: now });
+  }
+
+  saveData();
+  updateDisplay();
+  showToast(`Bonus allocated: ₹${formatCurrency(basePortion)} to budget, ₹${formatCurrency(savingsPortion)} to savings, ₹${formatCurrency(pocketPortion)} to pocket`);
 }
 
 // Add Custom Bonus
@@ -328,7 +403,9 @@ function resetAppData() {
       pocket: 0,
       savings: 0,
       transactions: [],
-      rentStatus: 'pending'
+      rentStatus: 'pending',
+      budgetBase: 0,
+      leftoverPocket: 0
     };
     saveData();
     updateDisplay();
@@ -378,42 +455,58 @@ function closeNewMonthModal() {
 function confirmNewMonth() {
   const pocketAmount = parseFloat(document.getElementById('modalPocketAmount').value) || 0;
   const startDate = document.getElementById('modalStartDate').value;
-  
-  // Reset for new month
-  window.appData.pocket = Math.max(0, pocketAmount);
+  const currentPocket = window.appData.pocket || 0;
+  const previousPocket = currentPocket + (window.appData.leftoverPocket || 0);
+  const now = new Date().toISOString();
+
+  // Reset transactions for the new month (history starts fresh)
+  window.appData.transactions = [];
+
+  if (previousPocket > 0) {
+    const msg = `You have ₹${formatCurrency(previousPocket)} from prior pocket money.\n` +
+      'OK = Combine prior pocket with the New Month amount and set the budget guide from the combined total.\n' +
+      'Cancel = Keep prior pocket unchanged (saved separately) and use only the New Month Pocket Amount for the new pocket and budget guide.';
+
+    const combine = confirm(msg);
+
+    if (combine) {
+      const totalStart = previousPocket + Math.max(0, pocketAmount);
+      window.appData.pocket = totalStart;
+      window.appData.budgetBase = totalStart;
+      window.appData.leftoverPocket = 0;
+      window.appData.transactions.push({ amount: totalStart, description: 'Starting pocket (carried + new)', type: 'income', date: now });
+    } else {
+      window.appData.leftoverPocket = previousPocket;
+      window.appData.pocket = Math.max(0, pocketAmount);
+      window.appData.budgetBase = Math.max(0, pocketAmount);
+    }
+  } else {
+    window.appData.pocket = Math.max(0, pocketAmount);
+    window.appData.budgetBase = Math.max(0, pocketAmount);
+  }
+
   window.appData.rentStatus = 'pending';
   window.appData.currentMonth = getMonthKey();
-  window.appData.transactions = [];
-  
+
   saveData();
   updateDisplay();
   closeNewMonthModal();
   showToast('New month started! 🎉');
-  
-  // Clear inputs
+
   document.getElementById('modalPocketAmount').value = '';
   document.getElementById('modalStartDate').value = '';
 }
 
 // Setup Event Listeners
 function setupEventListeners() {
-  // Theme
   document.getElementById('btn-theme').addEventListener('click', toggleTheme);
-  
-  // New Month
   document.getElementById('btn-new-month').addEventListener('click', openNewMonthModal);
   document.getElementById('btn-close-modal').addEventListener('click', closeNewMonthModal);
   document.getElementById('btn-cancel-modal').addEventListener('click', closeNewMonthModal);
   document.getElementById('btn-confirm-new-month').addEventListener('click', confirmNewMonth);
-  
-  // Rent
   document.getElementById('btn-rent').addEventListener('click', toggleRentStatus);
-  
-  // Vault
   document.getElementById('btn-save').addEventListener('click', saveToVault);
   document.getElementById('btn-withdraw').addEventListener('click', withdrawFromVault);
-  
-  // Quick Spend
   document.querySelectorAll('.btn-quick-spend').forEach(btn => {
     btn.addEventListener('click', () => {
       const amount = parseInt(btn.dataset.amount);
@@ -421,44 +514,30 @@ function setupEventListeners() {
       quickSpend(amount, desc);
     });
   });
-  
-  // Custom Spend
   document.getElementById('btn-custom-spend').addEventListener('click', customSpend);
   document.getElementById('customSpendAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') customSpend();
   });
-  
-  // Pocket Money
   document.getElementById('btn-add-pocket').addEventListener('click', addPocketMoney);
   document.getElementById('customPocketAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addPocketMoney();
   });
-  
-  // Bonus Income
   document.querySelectorAll('.btn-quick-bonus').forEach(btn => {
     btn.addEventListener('click', () => {
       const amount = parseInt(btn.dataset.amount);
       addBonus(amount);
     });
   });
-  
   document.getElementById('btn-custom-bonus').addEventListener('click', addCustomBonus);
   document.getElementById('customBonusAmount').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addCustomBonus();
   });
-  
-  // History
   document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
-  
-  // Reset
   document.getElementById('btn-reset').addEventListener('click', resetAppData);
-  
-  // Close modal on overlay click
   document.getElementById('newMonthModal').addEventListener('click', (e) => {
     if (e.target.id === 'newMonthModal') closeNewMonthModal();
   });
 }
 
-// Initialize on DOM Ready
 document.addEventListener('DOMContentLoaded', initApp);
